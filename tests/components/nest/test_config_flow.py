@@ -13,7 +13,12 @@ from pytest_homeassistant.test_util.aiohttp import AiohttpClientMocker
 from pytest_homeassistant.typing import ClientSessionGenerator
 
 from homeassistant import config_entries
-from homeassistant.components.nest.const import DOMAIN, OAUTH2_AUTHORIZE, OAUTH2_TOKEN
+from homeassistant.components.nest.const import (
+    CONF_FAN_DURATION,
+    DOMAIN,
+    OAUTH2_AUTHORIZE,
+    OAUTH2_TOKEN,
+)
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult, FlowResultType
@@ -2159,3 +2164,19 @@ async def test_reconfigure_missing_cloud_project_token_revoked(
     assert config_entry.data["cloud_project_id"] == CLOUD_PROJECT_ID
     assert config_entry.data["topic_name"] == NEW_TOPIC_NAME
     assert config_entry.data["subscription_name"] == NEW_SUBSCRIPTION_NAME
+
+
+@pytest.mark.parametrize("nest_test_config", [TEST_CONFIG_APP_CREDS])
+async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """Test setting the fan run time option."""
+    config_entry.add_to_hass(hass)
+
+    result = await hass.config_entries.options.async_init(config_entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "init"
+
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_FAN_DURATION: 15}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert config_entry.options == {CONF_FAN_DURATION: 15}

@@ -25,6 +25,10 @@ CONNECTIVITY_TRAIT_OFFLINE = "OFFLINE"
 
 SIGNAL_NEST_UPDATE = "nest_update"
 
+CONF_FAN_DURATION = "fan_duration"
+# The SDM API runs a fan timer for at most 12 hours.
+MAX_FAN_DURATION_MINUTES = 720
+
 # For the Google Nest Device Access API
 OAUTH2_AUTHORIZE = (
     "https://nestservices.google.com/partnerconnections/{project_id}/auth"

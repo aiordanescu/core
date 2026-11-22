@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock
 
 import aiohttp
 import pytest
+from pytest_homeassistant.common import MockConfigEntry
 
 from homeassistant.components.climate import (
     ATTR_CURRENT_HUMIDITY,
@@ -35,6 +36,7 @@ from homeassistant.components.climate import (
     HVACAction,
     HVACMode,
 )
+from homeassistant.components.nest.const import CONF_FAN_DURATION
 from homeassistant.const import (
     ATTR_SUPPORTED_FEATURES,
     ATTR_TEMPERATURE,
@@ -1170,6 +1172,48 @@ async def test_thermostat_set_fan(
         "command": "sdm.devices.commands.Fan.SetTimer",
         "params": {
             "duration": "43200s",
+            "timerMode": "ON",
+        },
+    }
+
+
+async def test_thermostat_set_fan_with_fan_duration_option(
+    hass: HomeAssistant,
+    setup_platform: PlatformSetup,
+    auth: FakeAuth,
+    create_device: CreateDevice,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Test the fan run time option sets how long the fan runs when turned on."""
+    create_device.create(
+        {
+            "sdm.devices.traits.Fan": {
+                "timerMode": "OFF",
+            },
+            "sdm.devices.traits.ThermostatHvac": {
+                "status": "OFF",
+            },
+            "sdm.devices.traits.ThermostatMode": {
+                "availableModes": ["HEAT", "COOL", "HEATCOOL", "OFF"],
+                "mode": "HEAT",
+            },
+        }
+    )
+    await setup_platform()
+
+    # The option is read when the fan is turned on, so changing it needs no reload.
+    hass.config_entries.async_update_entry(
+        config_entry, options={CONF_FAN_DURATION: 15}
+    )
+    await common.async_set_fan_mode(hass, FAN_ON)
+    await hass.async_block_till_done()
+
+    assert auth.method == "post"
+    assert auth.url == DEVICE_COMMAND
+    assert auth.json == {
+        "command": "sdm.devices.commands.Fan.SetTimer",
+        "params": {
+            "duration": "900s",
             "timerMode": "ON",
         },
     }

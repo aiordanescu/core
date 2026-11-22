@@ -21,13 +21,19 @@ from homeassistant.config_entries import (
     SOURCE_REAUTH,
     SOURCE_RECONFIGURE,
     ConfigFlowResult,
+    OptionsFlow,
 )
+from homeassistant.const import UnitOfTime
+from homeassistant.core import callback
 from homeassistant.exceptions import (
     OAuth2TokenRequestBaseError,
     OAuth2TokenRequestReauthError,
 )
 from homeassistant.helpers import config_entry_oauth2_flow
 from homeassistant.helpers.selector import (
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -37,6 +43,7 @@ from homeassistant.util import get_random_string
 from . import api
 from .const import (
     CONF_CLOUD_PROJECT_ID,
+    CONF_FAN_DURATION,
     CONF_PROJECT_ID,
     CONF_SUBSCRIBER_ID,
     CONF_SUBSCRIBER_ID_IMPORTED,
@@ -44,14 +51,32 @@ from .const import (
     CONF_TOPIC_NAME,
     DATA_SDM,
     DOMAIN,
+    MAX_FAN_DURATION_MINUTES,
     OAUTH2_AUTHORIZE,
     SDM_SCOPES,
 )
+from .types import NestConfigEntry
 
 DATA_FLOW_IMPL = "nest_flow_implementation"
 TOPIC_FORMAT = "projects/{cloud_project_id}/topics/home-assistant-{rnd}"
 SUBSCRIPTION_FORMAT = "projects/{cloud_project_id}/subscriptions/home-assistant-{rnd}"
 RAND_LENGTH = 10
+
+OPTIONS_SCHEMA = probatio.Schema(
+    {
+        probatio.Required(
+            CONF_FAN_DURATION, default=MAX_FAN_DURATION_MINUTES
+        ): NumberSelector(
+            NumberSelectorConfig(
+                min=1,
+                max=MAX_FAN_DURATION_MINUTES,
+                step=1,
+                mode=NumberSelectorMode.BOX,
+                unit_of_measurement=UnitOfTime.MINUTES,
+            )
+        ),
+    }
+)
 
 MORE_INFO_URL = "https://www.home-assistant.io/integrations/nest/#configuration"
 
@@ -105,6 +130,13 @@ class NestFlowHandler(
 
     DOMAIN = DOMAIN
     VERSION = 1
+
+    @staticmethod
+    @callback
+    @override
+    def async_get_options_flow(config_entry: NestConfigEntry) -> NestOptionsFlow:
+        """Get the options flow for this handler."""
+        return NestOptionsFlow()
 
     def __init__(self) -> None:
         """Initialize NestFlowHandler."""
@@ -532,3 +564,21 @@ class NestFlowHandler(
                 self._admin_client, old_subscription_name
             )
         return result
+
+
+class NestOptionsFlow(OptionsFlow):
+    """Handle Nest options."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(
+                OPTIONS_SCHEMA, self.config_entry.options
+            ),
+        )

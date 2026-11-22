@@ -157,6 +157,18 @@
       "title": "Nest Pub/Sub subscription not found"
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "fan_duration": "Fan run time"
+        },
+        "data_description": {
+          "fan_duration": "How long the fan runs when its fan mode is set to on, for example from a thermostat card or from HomeKit. The Set fan timer action uses its own duration."
+        }
+      }
+    }
+  },
   "selector": {
     "subscription_name": {
       "options": {

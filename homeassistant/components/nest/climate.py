@@ -31,6 +31,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
+from .const import CONF_FAN_DURATION, MAX_FAN_DURATION_MINUTES
 from .device_info import NestDeviceInfo
 from .types import NestConfigEntry
 
@@ -68,7 +69,7 @@ FAN_MODE_MAP = {
 FAN_INV_MODE_MAP = {v: k for k, v in FAN_MODE_MAP.items()}
 FAN_INV_MODES = list(FAN_INV_MODE_MAP)
 
-MAX_FAN_DURATION = 43200  # 12 hours is the max in the SDM API
+MAX_FAN_DURATION = MAX_FAN_DURATION_MINUTES * 60
 MIN_TEMP = 10
 MAX_TEMP = 32
 MIN_TEMP_RANGE = 1.66667
@@ -83,7 +84,7 @@ async def async_setup_entry(
 
     def devices_added(devices: list[Device]) -> None:
         async_add_entities(
-            ThermostatEntity(device)
+            ThermostatEntity(device, entry)
             for device in devices
             if ThermostatHvacTrait.NAME in device.traits
         )
@@ -100,9 +101,10 @@ class ThermostatEntity(ClimateEntity):
     _attr_should_poll = False
     _attr_name = None
 
-    def __init__(self, device: Device) -> None:
+    def __init__(self, device: Device, entry: NestConfigEntry) -> None:
         """Initialize ThermostatEntity."""
         self._device = device
+        self._entry = entry
         self._device_info = NestDeviceInfo(device)
         # The API "name" field is a unique device identifier.
         self._attr_unique_id = device.name
@@ -377,7 +379,9 @@ class ThermostatEntity(ClimateEntity):
         trait = self._device.traits[FanTrait.NAME]
         duration = None
         if fan_mode != FAN_OFF:
-            duration = MAX_FAN_DURATION
+            duration = 60 * int(
+                self._entry.options.get(CONF_FAN_DURATION, MAX_FAN_DURATION_MINUTES)
+            )
         try:
             await trait.set_timer(FAN_INV_MODE_MAP[fan_mode], duration=duration)
         except ApiException as err:
