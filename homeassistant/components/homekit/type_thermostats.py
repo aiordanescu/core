@@ -10,6 +10,7 @@ from homeassistant.components.climate import (
     DEFAULT_MIN_HUMIDITY,
     DOMAIN as CLIMATE_DOMAIN,
     FAN_AUTO,
+    FAN_OFF,
     FAN_ON,
     ClimateEntityCapabilityAttribute,
     ClimateEntityFeature,
@@ -46,6 +47,7 @@ from .climate_util import (
     temperature_attribute_to_homekit,
 )
 from .const import (
+    CHAR_ACTIVE,
     CHAR_COOLING_THRESHOLD_TEMPERATURE,
     CHAR_CURRENT_FAN_STATE,
     CHAR_CURRENT_HEATING_COOLING,
@@ -261,6 +263,15 @@ class Thermostat(HomeKitClimateAccessory):
 
         if self.swing_on_mode:
             self.fan_chars.append(CHAR_SWING_MODE)
+
+        # A fan that can only be switched on and off has nothing else to expose,
+        # but Active on a linked fan service still lets HomeKit control it.
+        if (
+            not self.fan_chars
+            and FAN_ON in self.fan_modes
+            and FAN_OFF in self.fan_modes
+        ):
+            self.fan_chars.append(CHAR_ACTIVE)
 
         if self.fan_chars:
             if attributes.get(ClimateEntityStateAttribute.HVAC_ACTION) is not None:

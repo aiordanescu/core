@@ -1,5 +1,6 @@
 """Test different accessory types: Thermostats."""
 
+from typing import Any
 from unittest.mock import patch
 
 from pyhap.characteristic import Characteristic
@@ -52,6 +53,7 @@ from homeassistant.components.homekit.climate_base import (
 )
 from homeassistant.components.homekit.const import (
     ATTR_VALUE,
+    CHAR_ACTIVE,
     CHAR_CURRENT_FAN_STATE,
     CHAR_ROTATION_SPEED,
     CHAR_SWING_MODE,
@@ -61,6 +63,8 @@ from homeassistant.components.homekit.const import (
     PROP_MAX_VALUE,
     PROP_MIN_STEP,
     PROP_MIN_VALUE,
+    SERV_FANV2,
+    SERV_THERMOSTAT,
 )
 from homeassistant.components.homekit.type_thermostats import (
     HC_HEAT_COOL_AUTO,
@@ -2515,6 +2519,116 @@ async def test_thermostat_with_fan_modes_with_off(
     assert len(call_set_fan_mode) == 2
     assert call_set_fan_mode[-1].data[ATTR_ENTITY_ID] == entity_id
     assert call_set_fan_mode[-1].data[ATTR_FAN_MODE] == FAN_OFF
+
+
+@pytest.mark.parametrize(
+    ("extra_attributes", "fan_chars"),
+    [
+        pytest.param(
+            {ATTR_HVAC_ACTION: HVACAction.IDLE},
+            [CHAR_ACTIVE, CHAR_CURRENT_FAN_STATE],
+            id="with_hvac_action",
+        ),
+        pytest.param({}, [CHAR_ACTIVE], id="without_hvac_action"),
+    ],
+)
+async def test_thermostat_with_on_off_only_fan_modes(
+    hass: HomeAssistant,
+    hk_driver: HomeDriver,
+    extra_attributes: dict[str, Any],
+    fan_chars: list[str],
+) -> None:
+    """Test a thermostat whose fan can only be switched on and off."""
+    entity_id = "climate.test"
+    attributes = {
+        ATTR_SUPPORTED_FEATURES: ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.FAN_MODE,
+        ATTR_FAN_MODES: [FAN_ON, FAN_OFF],
+        ATTR_FAN_MODE: FAN_OFF,
+        ATTR_HVAC_MODES: [HVACMode.HEAT, HVACMode.OFF],
+        **extra_attributes,
+    }
+    hass.states.async_set(entity_id, HVACMode.HEAT, attributes)
+    await hass.async_block_till_done()
+    acc = Thermostat(hass, hk_driver, "Climate", entity_id, 1, None)
+    hk_driver.add_accessory(acc)
+
+    acc.run()
+    await hass.async_block_till_done()
+
+    assert acc.fan_chars == fan_chars
+    serv_fan = acc.get_service(SERV_FANV2)
+    assert serv_fan in acc.get_service(SERV_THERMOSTAT).linked_services
+    assert acc.char_fan_active.value == 0
+
+    hass.states.async_set(
+        entity_id, HVACMode.HEAT, {**attributes, ATTR_FAN_MODE: FAN_ON}
+    )
+    await hass.async_block_till_done()
+    assert acc.char_fan_active.value == 1
+
+    call_set_fan_mode = async_mock_service(hass, CLIMATE_DOMAIN, SERVICE_SET_FAN_MODE)
+    char_fan_active_iid = acc.char_fan_active.to_HAP()[HAP_REPR_IID]
+    hk_driver.set_characteristics(
+        {
+            HAP_REPR_CHARS: [
+                {
+                    HAP_REPR_AID: acc.aid,
+                    HAP_REPR_IID: char_fan_active_iid,
+                    HAP_REPR_VALUE: 0,
+                }
+            ]
+        },
+        "mock_addr",
+    )
+    await hass.async_block_till_done()
+    assert len(call_set_fan_mode) == 1
+    assert call_set_fan_mode[-1].data[ATTR_ENTITY_ID] == entity_id
+    assert call_set_fan_mode[-1].data[ATTR_FAN_MODE] == FAN_OFF
+
+    hk_driver.set_characteristics(
+        {
+            HAP_REPR_CHARS: [
+                {
+                    HAP_REPR_AID: acc.aid,
+                    HAP_REPR_IID: char_fan_active_iid,
+                    HAP_REPR_VALUE: 1,
+                }
+            ]
+        },
+        "mock_addr",
+    )
+    await hass.async_block_till_done()
+    assert len(call_set_fan_mode) == 2
+    assert call_set_fan_mode[-1].data[ATTR_FAN_MODE] == FAN_ON
+
+
+async def test_thermostat_with_only_fan_on_mode(
+    hass: HomeAssistant, hk_driver: HomeDriver
+) -> None:
+    """Test a thermostat whose fan cannot be switched off gets no fan service."""
+    entity_id = "climate.test"
+    hass.states.async_set(
+        entity_id,
+        HVACMode.HEAT,
+        {
+            ATTR_SUPPORTED_FEATURES: ClimateEntityFeature.TARGET_TEMPERATURE
+            | ClimateEntityFeature.FAN_MODE,
+            ATTR_FAN_MODES: [FAN_ON],
+            ATTR_FAN_MODE: FAN_ON,
+            ATTR_HVAC_ACTION: HVACAction.IDLE,
+            ATTR_HVAC_MODES: [HVACMode.HEAT, HVACMode.OFF],
+        },
+    )
+    await hass.async_block_till_done()
+    acc = Thermostat(hass, hk_driver, "Climate", entity_id, 1, None)
+    hk_driver.add_accessory(acc)
+
+    acc.run()
+    await hass.async_block_till_done()
+
+    assert acc.fan_chars == []
+    assert acc.get_service(SERV_FANV2) is None
 
 
 async def test_thermostat_with_fan_modes_set_to_none(
